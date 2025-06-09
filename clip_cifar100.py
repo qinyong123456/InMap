@@ -68,7 +68,7 @@ def get_cifar100_datasets(data_path, val_size=0.2, seed=42):
     torch.cuda.manual_seed(seed)
     
     # 随机打乱索引
-    torch.random.shuffle(indices)
+    random.shuffle(indices)
     train_idx, val_idx = indices[split:], indices[:split]
     
     # 创建子集
