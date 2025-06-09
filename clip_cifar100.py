@@ -1,5 +1,4 @@
 import argparse
-import random
 import torch
 import torchvision
 import torchvision.datasets as datasets
@@ -8,6 +7,7 @@ import torch.nn.functional as F
 import clip
 from torch.utils.data import Subset
 import os
+import random
 
 # CIFAR100类别名称
 cifar100_classes = [
@@ -66,7 +66,7 @@ def get_cifar100_datasets(data_path, val_size=0.2, seed=42):
     
     # 设置随机种子确保划分可复现
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    random.seed(seed)
     
     # 随机打乱索引
     random.shuffle(indices)
@@ -189,7 +189,7 @@ def main():
     )
 
     # 提取训练集图像特征
-    print('Extracting image features...')
+    print('Extracting training image features...')
     with torch.no_grad():
         train_image_feat = []
         train_image_label = []
@@ -218,17 +218,16 @@ def main():
     test_image_label = torch.cat(test_image_label, dim=0)
     print(f"Test features shape: {test_image_feat.shape}")
 
+    # 确保所有特征和分类器使用相同的数据类型
+    dtype = train_image_feat.dtype
+
     # 创建零样本分类器
     print('Creating zero-shot classifier...')
     text_classifier = zeroshot_classifier(clip, model, cifar100_classes, cifar100_7_templates)
-    
-    # 确保所有特征和分类器使用相同的数据类型
-    # 根据CLIP模型的默认精度设置（通常是float16或float32）
-    dtype = train_image_feat.dtype
     text_classifier = text_classifier.to(dtype)
-    test_image_feat = test_image_feat.to(dtype)
     
     # 评估零样本分类器性能
+    test_image_feat = test_image_feat.to(dtype)
     logits_t = test_image_feat @ text_classifier
     acc1, acc5 = accuracy(logits_t, test_image_label, topk=(1, 5))
     top1 = (acc1 / len(test_image_label)) * 100
@@ -236,11 +235,18 @@ def main():
 
     # 无Sinkhorn的视觉代理
     print('Optimizing vision proxy without Sinkhorn...')
-    plabel = F.softmax(logits_t / args.tau_t, dim=1)
+    # 使用训练集特征计算伪标签
+    train_logits_t = train_image_feat @ text_classifier
+    plabel = F.softmax(train_logits_t / args.tau_t, dim=1)
+    
+    # 修复维度匹配问题：确保plabel的类别数与CIFAR100一致
+    assert plabel.shape[1] == len(cifar100_classes), f"plabel shape: {plabel.shape}, classes: {len(cifar100_classes)}"
+    
     image_classifier = image_opt(
         train_image_feat, text_classifier, plabel, 
         lr=args.lr, iter=args.iters_proxy, tau_i=args.tau_i, alpha=args.alpha
     )
+    image_classifier = image_classifier.to(dtype)
     logits_i = test_image_feat @ image_classifier
     acc1, acc5 = accuracy(logits_i, test_image_label, topk=(1, 5))
     top1 = (acc1 / len(test_image_label)) * 100
@@ -248,11 +254,14 @@ def main():
 
     # 使用Sinkhorn的视觉代理
     print('Optimizing vision proxy with Sinkhorn...')
-    plabel = sinkhorn(logits_t, args.tau_t, args.gamma, args.iters_sinkhorn)
+    # 使用训练集特征生成Sinkhorn优化的伪标签
+    plabel = sinkhorn(train_logits_t, args.tau_t, args.gamma, args.iters_sinkhorn)
+    
     image_classifier = image_opt(
         train_image_feat, text_classifier, plabel, 
         lr=args.lr, iter=args.iters_proxy, tau_i=args.tau_i, alpha=args.alpha
     )
+    image_classifier = image_classifier.to(dtype)
     logits_i = test_image_feat @ image_classifier
     acc1, acc5 = accuracy(logits_i, test_image_label, topk=(1, 5))
     top1 = (acc1 / len(test_image_label)) * 100
