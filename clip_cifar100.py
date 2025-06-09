@@ -221,8 +221,13 @@ def main():
     # 创建零样本分类器
     print('Creating zero-shot classifier...')
     text_classifier = zeroshot_classifier(clip, model, cifar100_classes, cifar100_7_templates)
-    text_classifier = text_classifier.float()
-
+    
+    # 确保所有特征和分类器使用相同的数据类型
+    # 根据CLIP模型的默认精度设置（通常是float16或float32）
+    dtype = train_image_feat.dtype
+    text_classifier = text_classifier.to(dtype)
+    test_image_feat = test_image_feat.to(dtype)
+    
     # 评估零样本分类器性能
     logits_t = test_image_feat @ text_classifier
     acc1, acc5 = accuracy(logits_t, test_image_label, topk=(1, 5))
