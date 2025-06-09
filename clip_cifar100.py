@@ -154,8 +154,8 @@ def main():
                         choices=['RN50', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px'],
                         help='model architecture')
     parser.add_argument('-j', '--workers', default=4, type=int, help='data loading workers')
-    parser.add_argument('--iters_proxy', default=1000, type=int, help='iterations for vision proxy')
-    parser.add_argument('--iters_sinkhorn', default=10, type=int, help='iterations for Sinkhorn')
+    parser.add_argument('--iters_proxy', default=2000, type=int, help='iterations for vision proxy')
+    parser.add_argument('--iters_sinkhorn', default=20, type=int, help='iterations for Sinkhorn')
     parser.add_argument('-b', '--batch-size', default=128, type=int, help='mini-batch size')
     parser.add_argument('--lr', default=10, type=float, help='learning rate')
     parser.add_argument('--tau_t', default=0.01, type=float, help='temperature for text')
